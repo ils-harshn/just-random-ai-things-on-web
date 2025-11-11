@@ -46,6 +46,34 @@ canvas {
   padding: 20px;
   border-left: 2px solid #0f0;
   overflow-y: auto;
+  transition: transform 0.3s ease;
+}
+
+#controls.hidden {
+  transform: translateX(100%);
+  position: absolute;
+  right: 0;
+  height: 100vh;
+}
+
+#fullscreen-exit {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  padding: 10px 20px;
+  background: #000;
+  color: #0f0;
+  border: 2px solid #0f0;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  z-index: 1000;
+  display: none;
+}
+
+#fullscreen-exit:hover {
+  background: #0f0;
+  color: #000;
 }
 
 h2 {
@@ -102,6 +130,25 @@ button:active {
   font-family: 'Courier New', monospace;
 }
 
+.checkbox-control {
+  margin: 10px 0;
+}
+
+.checkbox-control label {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.checkbox-control input[type="checkbox"] {
+  margin-right: 10px;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #0f0;
+}
+
 .stats {
   margin-top: 20px;
 }
@@ -150,6 +197,7 @@ button:active {
       <button id="stopBtn">STOP</button>
       <button id="clearBtn">CLEAR</button>
       <button id="randomBtn">RANDOM SEED</button>
+      <button id="fullscreenBtn">FULLSCREEN</button>
     </div>
 
     <div class="control-group">
@@ -157,6 +205,16 @@ button:active {
       <div class="speed-control">
         <label>Gen/sec:</label>
         <input type="number" id="speedInput" value="10" min="1" max="60">
+      </div>
+    </div>
+
+    <div class="control-group">
+      <h2>VIEW OPTIONS</h2>
+      <div class="checkbox-control">
+        <label>
+          <input type="checkbox" id="gridToggle" checked>
+          Show Grid Borders
+        </label>
       </div>
     </div>
 
@@ -171,28 +229,36 @@ button:active {
         <span class="stat-value" id="initialCells">0</span>
       </div>
       <div class="stat-row">
-        <span class="stat-label">Live Cells:</span>
+        <span class="stat-label">Current Population:</span>
         <span class="stat-value" id="liveCells">0</span>
       </div>
       <div class="stat-row">
-        <span class="stat-label">Dead Cells:</span>
-        <span class="stat-value" id="deadCells">0</span>
+        <span class="stat-label">Population Change:</span>
+        <span class="stat-value" id="popChange">0</span>
       </div>
       <div class="stat-row">
-        <span class="stat-label">Max Live Cells:</span>
-        <span class="stat-value" id="maxLive">0</span>
+        <span class="stat-label">Peak Population:</span>
+        <span class="stat-value" id="peakPop">0</span>
       </div>
       <div class="stat-row">
-        <span class="stat-label">Max Dead Cells:</span>
-        <span class="stat-value" id="maxDead">0</span>
+        <span class="stat-label">Births This Gen:</span>
+        <span class="stat-value" id="births">0</span>
       </div>
       <div class="stat-row">
-        <span class="stat-label">Min Live Cells:</span>
-        <span class="stat-value" id="minLive">-</span>
+        <span class="stat-label">Deaths This Gen:</span>
+        <span class="stat-value" id="deaths">0</span>
       </div>
       <div class="stat-row">
-        <span class="stat-label">Min Dead Cells:</span>
-        <span class="stat-value" id="minDead">-</span>
+        <span class="stat-label">Total Births:</span>
+        <span class="stat-value" id="totalBirths">0</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Total Deaths:</span>
+        <span class="stat-value" id="totalDeaths">0</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Stability:</span>
+        <span class="stat-value" id="stability">-</span>
       </div>
     </div>
 
@@ -221,12 +287,14 @@ let lastTime = 0;
 let speed = 10;
 let generation = 0;
 let initialCellCount = 0;
-let totalLiveCells = 0;
-let totalDeadCells = 0;
-let maxLiveCells = 0;
-let maxDeadCells = 0;
-let minLiveCells = null;
-let minDeadCells = null;
+let peakPopulation = 0;
+let totalBirths = 0;
+let totalDeaths = 0;
+let birthsThisGen = 0;
+let deathsThisGen = 0;
+let previousPopulation = 0;
+let stabilityCounter = 0;
+let showGrid = true;
 
 // Panning
 let isDragging = false;
@@ -289,7 +357,9 @@ function nextGeneration() {
     }
   }
   
-  const prevLiveCount = grid.size;
+  const prevPopulation = grid.size;
+  let births = 0;
+  let deaths = 0;
   
   // Apply rules
   for (const key of toCheck) {
@@ -301,27 +371,31 @@ function nextGeneration() {
       newGrid.set(key, true);
     } else if (!isAlive && neighbors === 3) {
       newGrid.set(key, true);
+      births++;
+    } else if (isAlive) {
+      deaths++;
     }
   }
   
   grid = newGrid;
   generation++;
   
-  const currentLive = grid.size;
-  const deadThisGen = Math.max(0, prevLiveCount - currentLive);
+  const currentPopulation = grid.size;
   
-  totalLiveCells += currentLive;
-  totalDeadCells += deadThisGen;
+  birthsThisGen = births;
+  deathsThisGen = deaths;
+  totalBirths += births;
+  totalDeaths += deaths;
   
-  maxLiveCells = Math.max(maxLiveCells, currentLive);
-  maxDeadCells = Math.max(maxDeadCells, deadThisGen);
+  peakPopulation = Math.max(peakPopulation, currentPopulation);
   
-  if (minLiveCells === null || currentLive < minLiveCells) {
-    minLiveCells = currentLive;
+  // Check stability (same population for 3+ generations)
+  if (currentPopulation === previousPopulation) {
+    stabilityCounter++;
+  } else {
+    stabilityCounter = 0;
   }
-  if (minDeadCells === null || deadThisGen < minDeadCells) {
-    minDeadCells = deadThisGen;
-  }
+  previousPopulation = currentPopulation;
   
   updateStats();
   draw();
@@ -336,24 +410,26 @@ function draw() {
   const startRow = Math.floor(-offsetY / cellSize) - 1;
   const endRow = Math.ceil((canvas.height - offsetY) / cellSize) + 1;
   
-  // Draw grid
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth = 1;
-  
-  for (let i = startCol; i <= endCol; i++) {
-    const x = i * cellSize + offsetX;
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, canvas.height);
-    ctx.stroke();
-  }
-  
-  for (let i = startRow; i <= endRow; i++) {
-    const y = i * cellSize + offsetY;
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(canvas.width, y);
-    ctx.stroke();
+  // Draw grid (if enabled)
+  if (showGrid) {
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1;
+    
+    for (let i = startCol; i <= endCol; i++) {
+      const x = i * cellSize + offsetX;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, canvas.height);
+      ctx.stroke();
+    }
+    
+    for (let i = startRow; i <= endRow; i++) {
+      const y = i * cellSize + offsetY;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(canvas.width, y);
+      ctx.stroke();
+    }
   }
   
   // Draw cells
@@ -365,20 +441,39 @@ function draw() {
     
     if (screenX + cellSize > 0 && screenX < canvas.width &&
         screenY + cellSize > 0 && screenY < canvas.height) {
-      ctx.fillRect(screenX + 1, screenY + 1, cellSize - 2, cellSize - 2);
+      if (showGrid) {
+        ctx.fillRect(screenX + 1, screenY + 1, cellSize - 2, cellSize - 2);
+      } else {
+        ctx.fillRect(screenX, screenY, cellSize, cellSize);
+      }
     }
   }
 }
 
 function updateStats() {
+  const currentPop = grid.size;
+  const popChange = generation > 0 ? currentPop - previousPopulation : 0;
+  const changeSymbol = popChange > 0 ? '+' : '';
+  
+  let stabilityText = '-';
+  if (stabilityCounter >= 3) {
+    stabilityText = 'STABLE';
+  } else if (stabilityCounter > 0) {
+    stabilityText = `${stabilityCounter}/3`;
+  } else if (generation > 0) {
+    stabilityText = 'CHANGING';
+  }
+  
   document.getElementById('generation').textContent = generation;
   document.getElementById('initialCells').textContent = initialCellCount;
-  document.getElementById('liveCells').textContent = grid.size;
-  document.getElementById('deadCells').textContent = totalDeadCells;
-  document.getElementById('maxLive').textContent = maxLiveCells;
-  document.getElementById('maxDead').textContent = maxDeadCells;
-  document.getElementById('minLive').textContent = minLiveCells ?? '-';
-  document.getElementById('minDead').textContent = minDeadCells ?? '-';
+  document.getElementById('liveCells').textContent = currentPop;
+  document.getElementById('popChange').textContent = generation > 0 ? `${changeSymbol}${popChange}` : '0';
+  document.getElementById('peakPop').textContent = peakPopulation;
+  document.getElementById('births').textContent = birthsThisGen;
+  document.getElementById('deaths').textContent = deathsThisGen;
+  document.getElementById('totalBirths').textContent = totalBirths;
+  document.getElementById('totalDeaths').textContent = totalDeaths;
+  document.getElementById('stability').textContent = stabilityText;
 }
 
 function start() {
@@ -397,12 +492,13 @@ function clear() {
   grid.clear();
   generation = 0;
   initialCellCount = 0;
-  totalLiveCells = 0;
-  totalDeadCells = 0;
-  maxLiveCells = 0;
-  maxDeadCells = 0;
-  minLiveCells = null;
-  minDeadCells = null;
+  peakPopulation = 0;
+  totalBirths = 0;
+  totalDeaths = 0;
+  birthsThisGen = 0;
+  deathsThisGen = 0;
+  previousPopulation = 0;
+  stabilityCounter = 0;
   updateStats();
   draw();
 }
@@ -499,6 +595,18 @@ document.getElementById('startBtn').addEventListener('click', start);
 document.getElementById('stopBtn').addEventListener('click', stop);
 document.getElementById('clearBtn').addEventListener('click', clear);
 document.getElementById('randomBtn').addEventListener('click', randomSeed);
+document.getElementById('fullscreenBtn').addEventListener('click', () => {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen();
+  } else {
+    document.exitFullscreen();
+  }
+});
+
+document.getElementById('gridToggle').addEventListener('change', (e) => {
+  showGrid = e.target.checked;
+  draw();
+});
 
 document.getElementById('speedInput').addEventListener('input', (e) => {
   speed = Math.max(1, Math.min(60, parseInt(e.target.value) || 10));
