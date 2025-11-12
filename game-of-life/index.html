@@ -1,630 +1,656 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Game of Life</title>
-<style>
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Game of Life</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
 
-body {
-  background: #000;
-  color: #0f0;
-  font-family: 'Courier New', monospace;
-  overflow: hidden;
-  height: 100vh;
-}
+    body {
+      background: #000;
+      color: #0f0;
+      font-family: 'Courier New', monospace;
+      overflow: hidden;
+      height: 100vh;
+    }
 
-#container {
-  display: flex;
-  height: 100vh;
-}
+    #container {
+      display: flex;
+      height: 100vh;
+    }
 
-#canvas-wrapper {
-  flex: 1;
-  position: relative;
-  cursor: grab;
-}
+    #canvas-wrapper {
+      flex: 1;
+      position: relative;
+      cursor: grab;
+    }
 
-#canvas-wrapper.grabbing {
-  cursor: grabbing;
-}
+    #canvas-wrapper.grabbing {
+      cursor: grabbing;
+    }
 
-canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
 
-#controls {
-  width: 280px;
-  background: #111;
-  padding: 20px;
-  border-left: 2px solid #0f0;
-  overflow-y: auto;
-  transition: transform 0.3s ease;
-}
+    #controls {
+      width: 280px;
+      background: #111;
+      padding: 20px;
+      border-left: 2px solid #0f0;
+      overflow-y: auto;
+      transition: transform 0.3s ease;
+    }
 
-#controls.hidden {
-  transform: translateX(100%);
-  position: absolute;
-  right: 0;
-  height: 100vh;
-}
+    #controls.hidden {
+      transform: translateX(100%);
+      position: absolute;
+      right: 0;
+      height: 100vh;
+    }
 
-#fullscreen-exit {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  padding: 10px 20px;
-  background: #000;
-  color: #0f0;
-  border: 2px solid #0f0;
-  cursor: pointer;
-  font-family: 'Courier New', monospace;
-  font-size: 14px;
-  z-index: 1000;
-  display: none;
-}
+    #fullscreen-exit {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      padding: 10px 20px;
+      background: #000;
+      color: #0f0;
+      border: 2px solid #0f0;
+      cursor: pointer;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      z-index: 1000;
+      display: none;
+    }
 
-#fullscreen-exit:hover {
-  background: #0f0;
-  color: #000;
-}
+    #fullscreen-exit:hover {
+      background: #0f0;
+      color: #000;
+    }
 
-h2 {
-  color: #0f0;
-  margin-bottom: 15px;
-  font-size: 18px;
-  border-bottom: 1px solid #0f0;
-  padding-bottom: 5px;
-}
+    h2 {
+      color: #0f0;
+      margin-bottom: 15px;
+      font-size: 18px;
+      border-bottom: 1px solid #0f0;
+      padding-bottom: 5px;
+    }
 
-.control-group {
-  margin-bottom: 20px;
-}
+    .control-group {
+      margin-bottom: 20px;
+    }
 
-button {
-  width: 100%;
-  padding: 10px;
-  margin-bottom: 8px;
-  background: #000;
-  color: #0f0;
-  border: 2px solid #0f0;
-  cursor: pointer;
-  font-family: 'Courier New', monospace;
-  font-size: 14px;
-  transition: all 0.2s;
-}
+    button {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 8px;
+      background: #000;
+      color: #0f0;
+      border: 2px solid #0f0;
+      cursor: pointer;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
 
-button:hover {
-  background: #0f0;
-  color: #000;
-}
+    button:hover {
+      background: #0f0;
+      color: #000;
+    }
 
-button:active {
-  transform: scale(0.98);
-}
+    button:active {
+      transform: scale(0.98);
+    }
 
-.speed-control {
-  display: flex;
-  align-items: center;
-  margin-bottom: 10px;
-}
+    .speed-control {
+      display: flex;
+      align-items: center;
+      margin-bottom: 10px;
+    }
 
-.speed-control label {
-  flex: 1;
-  font-size: 14px;
-}
+    .speed-control label {
+      flex: 1;
+      font-size: 14px;
+    }
 
-.speed-control input {
-  width: 60px;
-  padding: 5px;
-  background: #000;
-  color: #0f0;
-  border: 1px solid #0f0;
-  font-family: 'Courier New', monospace;
-}
+    .speed-control input {
+      width: 60px;
+      padding: 5px;
+      background: #000;
+      color: #0f0;
+      border: 1px solid #0f0;
+      font-family: 'Courier New', monospace;
+    }
 
-.checkbox-control {
-  margin: 10px 0;
-}
+    .checkbox-control {
+      margin: 10px 0;
+    }
 
-.checkbox-control label {
-  display: flex;
-  align-items: center;
-  cursor: pointer;
-  font-size: 13px;
-}
+    .checkbox-control label {
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      font-size: 13px;
+    }
 
-.checkbox-control input[type="checkbox"] {
-  margin-right: 10px;
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
-  accent-color: #0f0;
-}
+    .checkbox-control input[type="checkbox"] {
+      margin-right: 10px;
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+      accent-color: #0f0;
+    }
 
-.stats {
-  margin-top: 20px;
-}
+    .stats {
+      margin-top: 20px;
+    }
 
-.stat-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 6px 0;
-  border-bottom: 1px solid #333;
-  font-size: 13px;
-}
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid #333;
+      font-size: 13px;
+    }
 
-.stat-label {
-  color: #0a0;
-}
+    .stat-label {
+      color: #0a0;
+    }
 
-.stat-value {
-  color: #0f0;
-  font-weight: bold;
-}
+    .stat-value {
+      color: #0f0;
+      font-weight: bold;
+    }
 
-.info {
-  margin-top: 15px;
-  padding: 10px;
-  background: #0a0a0a;
-  border: 1px solid #0f0;
-  font-size: 11px;
-  color: #0a0;
-}
+    .info {
+      margin-top: 15px;
+      padding: 10px;
+      background: #0a0a0a;
+      border: 1px solid #0f0;
+      font-size: 11px;
+      color: #0a0;
+    }
 
-.info p {
-  margin-bottom: 5px;
-}
-</style>
+    .info p {
+      margin-bottom: 5px;
+    }
+
+    .controls-container {
+      position: absolute;
+      top: 2px;
+      right: 20px;
+      z-index: 1000;
+      width: 38px;
+      opacity: 0.25;
+      transition: opacity 0.3s;
+    }
+
+    .controls-container:hover {
+      opacity: 1;
+    }
+  </style>
 </head>
+
 <body>
-<div id="container">
-  <div id="canvas-wrapper">
-    <canvas id="gameCanvas"></canvas>
+  <div id="container">
+    <div id="canvas-wrapper">
+      <canvas id="gameCanvas"></canvas>
+    </div>
+    <div class="controls-container">
+      <button id="controls-toggler">x</button>
+    </div>
+    <div id="controls">
+      <h2>CONTROLS</h2>
+      <div class="control-group">
+        <button id="startBtn">START</button>
+        <button id="stopBtn">STOP</button>
+        <button id="clearBtn">CLEAR</button>
+        <button id="randomBtn">RANDOM SEED</button>
+        <button id="fullscreenBtn">FULLSCREEN</button>
+      </div>
+
+      <div class="control-group">
+        <h2>SPEED</h2>
+        <div class="speed-control">
+          <label>Gen/sec:</label>
+          <input type="number" id="speedInput" value="10" min="1" max="60">
+        </div>
+      </div>
+
+      <div class="control-group">
+        <h2>VIEW OPTIONS</h2>
+        <div class="checkbox-control">
+          <label>
+            <input type="checkbox" id="gridToggle" checked>
+            Show Grid Borders
+          </label>
+        </div>
+      </div>
+
+      <div class="stats">
+        <h2>STATISTICS</h2>
+        <div class="stat-row">
+          <span class="stat-label">Generation:</span>
+          <span class="stat-value" id="generation">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Initial Cells:</span>
+          <span class="stat-value" id="initialCells">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Current Population:</span>
+          <span class="stat-value" id="liveCells">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Population Change:</span>
+          <span class="stat-value" id="popChange">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Peak Population:</span>
+          <span class="stat-value" id="peakPop">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Births This Gen:</span>
+          <span class="stat-value" id="births">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Deaths This Gen:</span>
+          <span class="stat-value" id="deaths">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Total Births:</span>
+          <span class="stat-value" id="totalBirths">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Total Deaths:</span>
+          <span class="stat-value" id="totalDeaths">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Stability:</span>
+          <span class="stat-value" id="stability">-</span>
+        </div>
+      </div>
+
+      <div class="info">
+        <p><strong>INSTRUCTIONS:</strong></p>
+        <p>• Click cells to toggle</p>
+        <p>• Drag to pan</p>
+        <p>• Scroll to zoom</p>
+        <p>• Space to start/stop</p>
+      </div>
+    </div>
   </div>
-  
-  <div id="controls">
-    <h2>CONTROLS</h2>
-    <div class="control-group">
-      <button id="startBtn">START</button>
-      <button id="stopBtn">STOP</button>
-      <button id="clearBtn">CLEAR</button>
-      <button id="randomBtn">RANDOM SEED</button>
-      <button id="fullscreenBtn">FULLSCREEN</button>
-    </div>
 
-    <div class="control-group">
-      <h2>SPEED</h2>
-      <div class="speed-control">
-        <label>Gen/sec:</label>
-        <input type="number" id="speedInput" value="10" min="1" max="60">
-      </div>
-    </div>
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const wrapper = document.getElementById('canvas-wrapper');
 
-    <div class="control-group">
-      <h2>VIEW OPTIONS</h2>
-      <div class="checkbox-control">
-        <label>
-          <input type="checkbox" id="gridToggle" checked>
-          Show Grid Borders
-        </label>
-      </div>
-    </div>
+    // State
+    let grid = new Map();
+    let running = false;
+    let cellSize = 20;
+    let offsetX = 0;
+    let offsetY = 0;
+    let lastTime = 0;
+    let speed = 10;
+    let generation = 0;
+    let initialCellCount = 0;
+    let peakPopulation = 0;
+    let totalBirths = 0;
+    let totalDeaths = 0;
+    let birthsThisGen = 0;
+    let deathsThisGen = 0;
+    let previousPopulation = 0;
+    let stabilityCounter = 0;
+    let showGrid = true;
 
-    <div class="stats">
-      <h2>STATISTICS</h2>
-      <div class="stat-row">
-        <span class="stat-label">Generation:</span>
-        <span class="stat-value" id="generation">0</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">Initial Cells:</span>
-        <span class="stat-value" id="initialCells">0</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">Current Population:</span>
-        <span class="stat-value" id="liveCells">0</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">Population Change:</span>
-        <span class="stat-value" id="popChange">0</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">Peak Population:</span>
-        <span class="stat-value" id="peakPop">0</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">Births This Gen:</span>
-        <span class="stat-value" id="births">0</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">Deaths This Gen:</span>
-        <span class="stat-value" id="deaths">0</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">Total Births:</span>
-        <span class="stat-value" id="totalBirths">0</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">Total Deaths:</span>
-        <span class="stat-value" id="totalDeaths">0</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">Stability:</span>
-        <span class="stat-value" id="stability">-</span>
-      </div>
-    </div>
+    // Panning
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let dragOffsetX = 0;
+    let dragOffsetY = 0;
 
-    <div class="info">
-      <p><strong>INSTRUCTIONS:</strong></p>
-      <p>• Click cells to toggle</p>
-      <p>• Drag to pan</p>
-      <p>• Scroll to zoom</p>
-      <p>• Space to start/stop</p>
-    </div>
-  </div>
-</div>
-
-<script>
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
-const wrapper = document.getElementById('canvas-wrapper');
-
-// State
-let grid = new Map();
-let running = false;
-let cellSize = 20;
-let offsetX = 0;
-let offsetY = 0;
-let lastTime = 0;
-let speed = 10;
-let generation = 0;
-let initialCellCount = 0;
-let peakPopulation = 0;
-let totalBirths = 0;
-let totalDeaths = 0;
-let birthsThisGen = 0;
-let deathsThisGen = 0;
-let previousPopulation = 0;
-let stabilityCounter = 0;
-let showGrid = true;
-
-// Panning
-let isDragging = false;
-let dragStartX = 0;
-let dragStartY = 0;
-let dragOffsetX = 0;
-let dragOffsetY = 0;
-
-function resize() {
-  canvas.width = wrapper.clientWidth;
-  canvas.height = wrapper.clientHeight;
-  draw();
-}
-
-function getCellKey(x, y) {
-  return `${x},${y}`;
-}
-
-function parseCellKey(key) {
-  const [x, y] = key.split(',').map(Number);
-  return { x, y };
-}
-
-function toggleCell(x, y) {
-  const key = getCellKey(x, y);
-  if (grid.has(key)) {
-    grid.delete(key);
-  } else {
-    grid.set(key, true);
-  }
-  if (!running && generation === 0) {
-    initialCellCount = grid.size;
-    updateStats();
-  }
-  draw();
-}
-
-function getNeighbors(x, y) {
-  let count = 0;
-  for (let dx = -1; dx <= 1; dx++) {
-    for (let dy = -1; dy <= 1; dy++) {
-      if (dx === 0 && dy === 0) continue;
-      if (grid.has(getCellKey(x + dx, y + dy))) count++;
+    function resize() {
+      canvas.width = wrapper.clientWidth;
+      canvas.height = wrapper.clientHeight;
+      draw();
     }
-  }
-  return count;
-}
 
-function nextGeneration() {
-  const newGrid = new Map();
-  const toCheck = new Set();
-  
-  // Add all live cells and their neighbors to check list
-  for (const key of grid.keys()) {
-    const { x, y } = parseCellKey(key);
-    for (let dx = -1; dx <= 1; dx++) {
-      for (let dy = -1; dy <= 1; dy++) {
-        toCheck.add(getCellKey(x + dx, y + dy));
-      }
+    function getCellKey(x, y) {
+      return `${x},${y}`;
     }
-  }
-  
-  const prevPopulation = grid.size;
-  let births = 0;
-  let deaths = 0;
-  
-  // Apply rules
-  for (const key of toCheck) {
-    const { x, y } = parseCellKey(key);
-    const neighbors = getNeighbors(x, y);
-    const isAlive = grid.has(key);
-    
-    if (isAlive && (neighbors === 2 || neighbors === 3)) {
-      newGrid.set(key, true);
-    } else if (!isAlive && neighbors === 3) {
-      newGrid.set(key, true);
-      births++;
-    } else if (isAlive) {
-      deaths++;
-    }
-  }
-  
-  grid = newGrid;
-  generation++;
-  
-  const currentPopulation = grid.size;
-  
-  birthsThisGen = births;
-  deathsThisGen = deaths;
-  totalBirths += births;
-  totalDeaths += deaths;
-  
-  peakPopulation = Math.max(peakPopulation, currentPopulation);
-  
-  // Check stability (same population for 3+ generations)
-  if (currentPopulation === previousPopulation) {
-    stabilityCounter++;
-  } else {
-    stabilityCounter = 0;
-  }
-  previousPopulation = currentPopulation;
-  
-  updateStats();
-  draw();
-}
 
-function draw() {
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  
-  const startCol = Math.floor(-offsetX / cellSize) - 1;
-  const endCol = Math.ceil((canvas.width - offsetX) / cellSize) + 1;
-  const startRow = Math.floor(-offsetY / cellSize) - 1;
-  const endRow = Math.ceil((canvas.height - offsetY) / cellSize) + 1;
-  
-  // Draw grid (if enabled)
-  if (showGrid) {
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1;
-    
-    for (let i = startCol; i <= endCol; i++) {
-      const x = i * cellSize + offsetX;
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, canvas.height);
-      ctx.stroke();
+    function parseCellKey(key) {
+      const [x, y] = key.split(',').map(Number);
+      return { x, y };
     }
-    
-    for (let i = startRow; i <= endRow; i++) {
-      const y = i * cellSize + offsetY;
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(canvas.width, y);
-      ctx.stroke();
-    }
-  }
-  
-  // Draw cells
-  ctx.fillStyle = '#0f0';
-  for (const key of grid.keys()) {
-    const { x, y } = parseCellKey(key);
-    const screenX = x * cellSize + offsetX;
-    const screenY = y * cellSize + offsetY;
-    
-    if (screenX + cellSize > 0 && screenX < canvas.width &&
-        screenY + cellSize > 0 && screenY < canvas.height) {
-      if (showGrid) {
-        ctx.fillRect(screenX + 1, screenY + 1, cellSize - 2, cellSize - 2);
+
+    function toggleCell(x, y) {
+      const key = getCellKey(x, y);
+      if (grid.has(key)) {
+        grid.delete(key);
       } else {
-        ctx.fillRect(screenX, screenY, cellSize, cellSize);
+        grid.set(key, true);
+      }
+      if (!running && generation === 0) {
+        initialCellCount = grid.size;
+        updateStats();
+      }
+      draw();
+    }
+
+    function getNeighbors(x, y) {
+      let count = 0;
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          if (dx === 0 && dy === 0) continue;
+          if (grid.has(getCellKey(x + dx, y + dy))) count++;
+        }
+      }
+      return count;
+    }
+
+    function nextGeneration() {
+      const newGrid = new Map();
+      const toCheck = new Set();
+
+      // Add all live cells and their neighbors to check list
+      for (const key of grid.keys()) {
+        const { x, y } = parseCellKey(key);
+        for (let dx = -1; dx <= 1; dx++) {
+          for (let dy = -1; dy <= 1; dy++) {
+            toCheck.add(getCellKey(x + dx, y + dy));
+          }
+        }
+      }
+
+      const prevPopulation = grid.size;
+      let births = 0;
+      let deaths = 0;
+
+      // Apply rules
+      for (const key of toCheck) {
+        const { x, y } = parseCellKey(key);
+        const neighbors = getNeighbors(x, y);
+        const isAlive = grid.has(key);
+
+        if (isAlive && (neighbors === 2 || neighbors === 3)) {
+          newGrid.set(key, true);
+        } else if (!isAlive && neighbors === 3) {
+          newGrid.set(key, true);
+          births++;
+        } else if (isAlive) {
+          deaths++;
+        }
+      }
+
+      grid = newGrid;
+      generation++;
+
+      const currentPopulation = grid.size;
+
+      birthsThisGen = births;
+      deathsThisGen = deaths;
+      totalBirths += births;
+      totalDeaths += deaths;
+
+      peakPopulation = Math.max(peakPopulation, currentPopulation);
+
+      // Check stability (same population for 3+ generations)
+      if (currentPopulation === previousPopulation) {
+        stabilityCounter++;
+      } else {
+        stabilityCounter = 0;
+      }
+      previousPopulation = currentPopulation;
+
+      updateStats();
+      draw();
+    }
+
+    function draw() {
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const startCol = Math.floor(-offsetX / cellSize) - 1;
+      const endCol = Math.ceil((canvas.width - offsetX) / cellSize) + 1;
+      const startRow = Math.floor(-offsetY / cellSize) - 1;
+      const endRow = Math.ceil((canvas.height - offsetY) / cellSize) + 1;
+
+      // Draw grid (if enabled)
+      if (showGrid) {
+        // ctx.strokeStyle = '#fff';
+        ctx.strokeStyle = '#333'; 
+        ctx.lineWidth = 1;
+
+        for (let i = startCol; i <= endCol; i++) {
+          const x = i * cellSize + offsetX;
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, canvas.height);
+          ctx.stroke();
+        }
+
+        for (let i = startRow; i <= endRow; i++) {
+          const y = i * cellSize + offsetY;
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(canvas.width, y);
+          ctx.stroke();
+        }
+      }
+
+      // Draw cells
+      ctx.fillStyle = '#0f0';
+      for (const key of grid.keys()) {
+        const { x, y } = parseCellKey(key);
+        const screenX = x * cellSize + offsetX;
+        const screenY = y * cellSize + offsetY;
+
+        if (screenX + cellSize > 0 && screenX < canvas.width &&
+          screenY + cellSize > 0 && screenY < canvas.height) {
+          if (showGrid) {
+            ctx.fillRect(screenX + 1, screenY + 1, cellSize - 2, cellSize - 2);
+          } else {
+            ctx.fillRect(screenX, screenY, cellSize, cellSize);
+          }
+        }
       }
     }
-  }
-}
 
-function updateStats() {
-  const currentPop = grid.size;
-  const popChange = generation > 0 ? currentPop - previousPopulation : 0;
-  const changeSymbol = popChange > 0 ? '+' : '';
-  
-  let stabilityText = '-';
-  if (stabilityCounter >= 3) {
-    stabilityText = 'STABLE';
-  } else if (stabilityCounter > 0) {
-    stabilityText = `${stabilityCounter}/3`;
-  } else if (generation > 0) {
-    stabilityText = 'CHANGING';
-  }
-  
-  document.getElementById('generation').textContent = generation;
-  document.getElementById('initialCells').textContent = initialCellCount;
-  document.getElementById('liveCells').textContent = currentPop;
-  document.getElementById('popChange').textContent = generation > 0 ? `${changeSymbol}${popChange}` : '0';
-  document.getElementById('peakPop').textContent = peakPopulation;
-  document.getElementById('births').textContent = birthsThisGen;
-  document.getElementById('deaths').textContent = deathsThisGen;
-  document.getElementById('totalBirths').textContent = totalBirths;
-  document.getElementById('totalDeaths').textContent = totalDeaths;
-  document.getElementById('stability').textContent = stabilityText;
-}
+    function updateStats() {
+      const currentPop = grid.size;
+      const popChange = generation > 0 ? currentPop - previousPopulation : 0;
+      const changeSymbol = popChange > 0 ? '+' : '';
 
-function start() {
-  if (!running) {
-    running = true;
-    lastTime = performance.now();
-    requestAnimationFrame(gameLoop);
-  }
-}
+      let stabilityText = '-';
+      if (stabilityCounter >= 3) {
+        stabilityText = 'STABLE';
+      } else if (stabilityCounter > 0) {
+        stabilityText = `${stabilityCounter}/3`;
+      } else if (generation > 0) {
+        stabilityText = 'CHANGING';
+      }
 
-function stop() {
-  running = false;
-}
+      document.getElementById('generation').textContent = generation;
+      document.getElementById('initialCells').textContent = initialCellCount;
+      document.getElementById('liveCells').textContent = currentPop;
+      document.getElementById('popChange').textContent = generation > 0 ? `${changeSymbol}${popChange}` : '0';
+      document.getElementById('peakPop').textContent = peakPopulation;
+      document.getElementById('births').textContent = birthsThisGen;
+      document.getElementById('deaths').textContent = deathsThisGen;
+      document.getElementById('totalBirths').textContent = totalBirths;
+      document.getElementById('totalDeaths').textContent = totalDeaths;
+      document.getElementById('stability').textContent = stabilityText;
+    }
 
-function clear() {
-  grid.clear();
-  generation = 0;
-  initialCellCount = 0;
-  peakPopulation = 0;
-  totalBirths = 0;
-  totalDeaths = 0;
-  birthsThisGen = 0;
-  deathsThisGen = 0;
-  previousPopulation = 0;
-  stabilityCounter = 0;
-  updateStats();
-  draw();
-}
+    function start() {
+      if (!running) {
+        running = true;
+        lastTime = performance.now();
+        requestAnimationFrame(gameLoop);
+      }
+    }
 
-function randomSeed() {
-  clear();
-  const cols = Math.floor(canvas.width / cellSize);
-  const rows = Math.floor(canvas.height / cellSize);
-  const centerX = Math.floor(-offsetX / cellSize);
-  const centerY = Math.floor(-offsetY / cellSize);
-  
-  for (let i = 0; i < (cols * rows) / 8; i++) {
-    const x = centerX + Math.floor(Math.random() * cols) - cols / 2;
-    const y = centerY + Math.floor(Math.random() * rows) - rows / 2;
-    grid.set(getCellKey(x, y), true);
-  }
-  
-  initialCellCount = grid.size;
-  updateStats();
-  draw();
-}
+    function stop() {
+      running = false;
+    }
 
-function gameLoop(currentTime) {
-  if (!running) return;
-  
-  const deltaTime = currentTime - lastTime;
-  const interval = 1000 / speed;
-  
-  if (deltaTime >= interval) {
-    nextGeneration();
-    lastTime = currentTime - (deltaTime % interval);
-  }
-  
-  requestAnimationFrame(gameLoop);
-}
+    function clear() {
+      grid.clear();
+      generation = 0;
+      initialCellCount = 0;
+      peakPopulation = 0;
+      totalBirths = 0;
+      totalDeaths = 0;
+      birthsThisGen = 0;
+      deathsThisGen = 0;
+      previousPopulation = 0;
+      stabilityCounter = 0;
+      updateStats();
+      draw();
+    }
 
-// Event listeners
-canvas.addEventListener('click', (e) => {
-  if (isDragging) return;
-  const rect = canvas.getBoundingClientRect();
-  const x = Math.floor((e.clientX - rect.left - offsetX) / cellSize);
-  const y = Math.floor((e.clientY - rect.top - offsetY) / cellSize);
-  toggleCell(x, y);
-});
+    function randomSeed() {
+      clear();
+      const cols = Math.floor(canvas.width / cellSize);
+      const rows = Math.floor(canvas.height / cellSize);
+      const centerX = Math.floor(-offsetX / cellSize);
+      const centerY = Math.floor(-offsetY / cellSize);
 
-canvas.addEventListener('mousedown', (e) => {
-  isDragging = true;
-  dragStartX = e.clientX;
-  dragStartY = e.clientY;
-  dragOffsetX = offsetX;
-  dragOffsetY = offsetY;
-  wrapper.classList.add('grabbing');
-});
+      for (let i = 0; i < (cols * rows) / 8; i++) {
+        const x = centerX + Math.floor(Math.random() * cols) - cols / 2;
+        const y = centerY + Math.floor(Math.random() * rows) - rows / 2;
+        grid.set(getCellKey(x, y), true);
+      }
 
-canvas.addEventListener('mousemove', (e) => {
-  if (isDragging) {
-    offsetX = dragOffsetX + (e.clientX - dragStartX);
-    offsetY = dragOffsetY + (e.clientY - dragStartY);
-    draw();
-  }
-});
+      initialCellCount = grid.size;
+      updateStats();
+      draw();
+    }
 
-canvas.addEventListener('mouseup', () => {
-  isDragging = false;
-  wrapper.classList.remove('grabbing');
-});
+    function gameLoop(currentTime) {
+      if (!running) return;
 
-canvas.addEventListener('mouseleave', () => {
-  isDragging = false;
-  wrapper.classList.remove('grabbing');
-});
+      const deltaTime = currentTime - lastTime;
+      const interval = 1000 / speed;
 
-canvas.addEventListener('wheel', (e) => {
-  e.preventDefault();
-  const rect = canvas.getBoundingClientRect();
-  const mouseX = e.clientX - rect.left;
-  const mouseY = e.clientY - rect.top;
-  
-  const worldX = (mouseX - offsetX) / cellSize;
-  const worldY = (mouseY - offsetY) / cellSize;
-  
-  const zoom = e.deltaY < 0 ? 1.1 : 0.9;
-  const newCellSize = Math.max(2, Math.min(100, cellSize * zoom));
-  
-  if (newCellSize !== cellSize) {
-    offsetX = mouseX - worldX * newCellSize;
-    offsetY = mouseY - worldY * newCellSize;
-    cellSize = newCellSize;
-    draw();
-  }
-});
+      if (deltaTime >= interval) {
+        nextGeneration();
+        lastTime = currentTime - (deltaTime % interval);
+      }
 
-document.getElementById('startBtn').addEventListener('click', start);
-document.getElementById('stopBtn').addEventListener('click', stop);
-document.getElementById('clearBtn').addEventListener('click', clear);
-document.getElementById('randomBtn').addEventListener('click', randomSeed);
-document.getElementById('fullscreenBtn').addEventListener('click', () => {
-  if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen();
-  } else {
-    document.exitFullscreen();
-  }
-});
+      requestAnimationFrame(gameLoop);
+    }
 
-document.getElementById('gridToggle').addEventListener('change', (e) => {
-  showGrid = e.target.checked;
-  draw();
-});
+    // Event listeners
+    canvas.addEventListener('click', (e) => {
+      if (isDragging) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = Math.floor((e.clientX - rect.left - offsetX) / cellSize);
+      const y = Math.floor((e.clientY - rect.top - offsetY) / cellSize);
+      toggleCell(x, y);
+    });
 
-document.getElementById('speedInput').addEventListener('input', (e) => {
-  speed = Math.max(1, Math.min(60, parseInt(e.target.value) || 10));
-  e.target.value = speed;
-});
+    canvas.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      dragOffsetX = offsetX;
+      dragOffsetY = offsetY;
+      wrapper.classList.add('grabbing');
+    });
 
-document.addEventListener('keydown', (e) => {
-  if (e.code === 'Space') {
-    e.preventDefault();
-    running ? stop() : start();
-  }
-});
+    canvas.addEventListener('mousemove', (e) => {
+      if (isDragging) {
+        offsetX = dragOffsetX + (e.clientX - dragStartX);
+        offsetY = dragOffsetY + (e.clientY - dragStartY);
+        draw();
+      }
+    });
 
-window.addEventListener('resize', resize);
+    canvas.addEventListener('mouseup', () => {
+      isDragging = false;
+      wrapper.classList.remove('grabbing');
+    });
 
-// Initialize
-resize();
-updateStats();
-</script>
+    canvas.addEventListener('mouseleave', () => {
+      isDragging = false;
+      wrapper.classList.remove('grabbing');
+    });
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      const worldX = (mouseX - offsetX) / cellSize;
+      const worldY = (mouseY - offsetY) / cellSize;
+
+      const zoom = e.deltaY < 0 ? 1.1 : 0.9;
+      const newCellSize = Math.max(1, Math.min(100, cellSize * zoom));
+
+      if (newCellSize !== cellSize) {
+        offsetX = mouseX - worldX * newCellSize;
+        offsetY = mouseY - worldY * newCellSize;
+        cellSize = newCellSize;
+        draw();
+      }
+    });
+
+    document.getElementById('startBtn').addEventListener('click', start);
+    document.getElementById('stopBtn').addEventListener('click', stop);
+    document.getElementById('clearBtn').addEventListener('click', clear);
+    document.getElementById('randomBtn').addEventListener('click', randomSeed);
+    document.getElementById('controls-toggler').addEventListener('click', () => {
+      const controls = document.getElementById('controls');
+      controls.classList.toggle('hidden');
+      const toggler = document.getElementById('controls-toggler');
+      toggler.textContent = controls.classList.contains('hidden') ? '+' : 'x';
+    });
+    document.getElementById('fullscreenBtn').addEventListener('click', () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen();
+      } else {
+        document.exitFullscreen();
+      }
+    });
+
+    document.getElementById('gridToggle').addEventListener('change', (e) => {
+      showGrid = e.target.checked;
+      draw();
+    });
+
+    document.getElementById('speedInput').addEventListener('input', (e) => {
+      speed = Math.max(1, Math.min(60, parseInt(e.target.value) || 10));
+      e.target.value = speed;
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        running ? stop() : start();
+      }
+    });
+
+    window.addEventListener('resize', resize);
+
+    // Initialize
+    resize();
+    updateStats();
+  </script>
 </body>
+
 </html>
