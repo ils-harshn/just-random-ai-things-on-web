@@ -581,7 +581,7 @@ canvas.addEventListener('wheel', (e) => {
   const worldY = (mouseY - offsetY) / cellSize;
   
   const zoom = e.deltaY < 0 ? 1.1 : 0.9;
-  const newCellSize = Math.max(5, Math.min(100, cellSize * zoom));
+  const newCellSize = Math.max(2, Math.min(100, cellSize * zoom));
   
   if (newCellSize !== cellSize) {
     offsetX = mouseX - worldX * newCellSize;
