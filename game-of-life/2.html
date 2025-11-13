@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Game of Life — Scalable</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:#000;color:#0f0;font-family:"Courier New",monospace;overflow:hidden;height:100vh}
+    #container{display:flex;height:100vh}
+    #canvas-wrapper{flex:1;position:relative;cursor:grab}
+    #canvas-wrapper.grabbing{cursor:grabbing}
+    canvas{display:block;width:100%;height:100%}
+    #controls{width:300px;background:#111;padding:18px;border-left:2px solid #0f0;overflow:auto}
+    button{width:100%;padding:10px;margin-bottom:8px;background:#000;color:#0f0;border:2px solid #0f0;cursor:pointer}
+    button:hover{background:#0f0;color:#000}
+    h2{color:#0f0;margin-bottom:12px;font-size:18px;border-bottom:1px solid #0f0;padding-bottom:6px}
+    .stat-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #333;font-size:13px}
+    .controls-container{position:absolute;top:8px;right:8px;z-index:1000;width:38px;opacity:0.25}
+    .controls-container:hover{opacity:1}
+    input[type=number]{width:80px;padding:6px;background:#000;color:#0f0;border:1px solid #0f0}
+    .checkbox-control{margin:10px 0}
+    .checkbox-control label{display:flex;align-items:center;cursor:pointer;font-size:13px}
+    .checkbox-control input{margin-right:10px;width:16px;height:16px;accent-color:#0f0}
+    .info{margin-top:12px;padding:10px;background:#0a0a0a;border:1px solid #0f0;font-size:11px;color:#0a0}
+    #fullscreen-exit{display:none}
+  </style>
+</head>
+<body>
+  <div id="container">
+    <div id="canvas-wrapper">
+      <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <div class="controls-container">
+      <button id="controls-toggler">x</button>
+    </div>
+
+    <div id="controls">
+      <h2>CONTROLS</h2>
+      <div class="control-group">
+        <button id="startBtn">START</button>
+        <button id="stopBtn">STOP</button>
+        <button id="clearBtn">CLEAR</button>
+        <button id="randomBtn">RANDOM SEED</button>
+        <button id="fullscreenBtn">FULLSCREEN</button>
+      </div>
+
+      <div class="control-group">
+        <h2>SPEED</h2>
+        <div class="speed-control">
+          <label style="flex:1">Gen/sec:</label>
+          <input type="number" id="speedInput" value="20" min="1" max="120">
+        </div>
+      </div>
+
+      <div class="control-group">
+        <h2>VIEW OPTIONS</h2>
+        <div class="checkbox-control">
+          <label>
+            <input type="checkbox" id="gridToggle" checked>
+            Show Grid Borders
+          </label>
+        </div>
+      </div>
+
+      <div class="stats">
+        <h2>STATISTICS</h2>
+        <div class="stat-row"><span class="stat-label">Generation:</span><span class="stat-value" id="generation">0</span></div>
+        <div class="stat-row"><span class="stat-label">Initial Cells:</span><span class="stat-value" id="initialCells">0</span></div>
+        <div class="stat-row"><span class="stat-label">Current Population:</span><span class="stat-value" id="liveCells">0</span></div>
+        <div class="stat-row"><span class="stat-label">Peak Population:</span><span class="stat-value" id="peakPop">0</span></div>
+        <div class="stat-row"><span class="stat-label">Births This Gen:</span><span class="stat-value" id="births">0</span></div>
+        <div class="stat-row"><span class="stat-label">Deaths This Gen:</span><span class="stat-value" id="deaths">0</span></div>
+      </div>
+
+      <div class="control-group">
+        <h2>PATTERNS</h2>
+        <div id="patternsContainer"></div>
+      </div>
+
+      <div class="info">
+        <p><strong>INSTRUCTIONS:</strong></p>
+        <p>• Click cells to toggle • Drag to pan • Scroll to zoom • Space to start/stop</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  /*********************************************************
+   * Fast, scalable Game of Life
+   * - Worker-based simulation (transfers typed arrays)
+   * - Integer packing keys (no strings)
+   * - Neighbor counting (single pass)
+   * - Partial canvas updates (only changed cells)
+   * - Offscreen cached grid lines
+   *********************************************************/
+
+  // ---- Encoders / constants ----
+  // We'll pack coordinates into a safe JS Number:
+  // key = (x + OFF) * SHIFT + (y + OFF)
+  // SHIFT chosen so (y + OFF) fits, and whole key < 2^53.
+  const COORD_OFFSET = 1 << 25;         // 33,554,432
+  const SHIFT = 1 << 26;                // 67,108,864
+  // Valid coords range roughly: -COORD_OFFSET .. COORD_OFFSET-1
+
+  function encodeKey(x, y) {
+    return (x + COORD_OFFSET) * SHIFT + (y + COORD_OFFSET);
+  }
+  function decodeKey(k) {
+    // numeric division is OK (we ensured result < 2^53)
+    const x = Math.floor(k / SHIFT) - COORD_OFFSET;
+    const y = (k % SHIFT) - COORD_OFFSET;
+    return {x, y};
+  }
+
+  // ---- DOM + canvas ----
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const wrapper = document.getElementById('canvas-wrapper');
+
+  // Offscreen cache for grid lines
+  let gridCanvas = document.createElement('canvas');
+  let gridCtx = gridCanvas.getContext('2d');
+  let gridCacheValid = false;
+
+  // Visible-drawn set (numbers)
+  let visibleDrawn = new Set();
+
+  // State
+  let liveSet = new Set();     // local view of live cells (keys are Numbers)
+  let running = false;
+  let cellSize = 8;            // pixels
+  let offsetX = 0;             // screen px offset (world->screen)
+  let offsetY = 0;
+  let speed = 20;              // generations/sec
+  let generation = 0;
+  let initialCellCount = 0;
+  let peakPopulation = 0;
+  let birthsThisGen = 0;
+  let deathsThisGen = 0;
+
+  // Panning
+  let isDragging = false;
+  let dragStartX = 0, dragStartY = 0, dragOffsetX = 0, dragOffsetY = 0;
+
+  // Worker
+  let simWorker = null;
+  let awaitingSim = false;
+
+  // UI
+  const generationEl = document.getElementById('generation');
+  const initialCellsEl = document.getElementById('initialCells');
+  const liveCellsEl = document.getElementById('liveCells');
+  const peakPopEl = document.getElementById('peakPop');
+  const birthsEl = document.getElementById('births');
+  const deathsEl = document.getElementById('deaths');
+
+  function resize() {
+    canvas.width = wrapper.clientWidth;
+    canvas.height = wrapper.clientHeight;
+    // resize grid cache
+    gridCanvas.width = canvas.width;
+    gridCanvas.height = canvas.height;
+    gridCacheValid = false;
+    redrawAll(); // redraw everything
+  }
+
+  // Draw helpers
+  function drawCellScreen(xPx, yPx, sizePx) {
+    ctx.fillRect(Math.floor(xPx) + 0.5, Math.floor(yPx) + 0.5, Math.max(0, Math.floor(sizePx)-1), Math.max(0, Math.floor(sizePx)-1));
+  }
+  function clearCellScreen(xPx, yPx, sizePx) {
+    // clear cell area (and redraw grid line from cached grid)
+    ctx.clearRect(Math.floor(xPx), Math.floor(yPx), Math.ceil(sizePx), Math.ceil(sizePx));
+    // overlay grid cache portion
+    if (gridCacheValid && document.getElementById('gridToggle').checked) {
+      ctx.drawImage(gridCanvas, Math.floor(xPx), Math.floor(yPx), Math.ceil(sizePx), Math.ceil(sizePx),
+                    Math.floor(xPx), Math.floor(yPx), Math.ceil(sizePx), Math.ceil(sizePx));
+    }
+  }
+
+  function worldToScreen(x, y) {
+    return { sx: x * cellSize + offsetX, sy: y * cellSize + offsetY };
+  }
+  function screenToWorld(px, py) {
+    return { x: Math.floor((px - offsetX) / cellSize), y: Math.floor((py - offsetY) / cellSize) };
+  }
+
+  // Cached grid rendering: draw grid lines once to an offscreen canvas
+  function renderGridCache() {
+    gridCtx.clearRect(0,0,gridCanvas.width,gridCanvas.height);
+    if (!document.getElementById('gridToggle').checked) { gridCacheValid = true; return; }
+    gridCtx.strokeStyle = '#112'; // subtle line
+    gridCtx.lineWidth = 1;
+
+    // compute start/end world cell indices visible
+    const startCol = Math.floor(-offsetX / cellSize) - 1;
+    const endCol = Math.ceil((canvas.width - offsetX) / cellSize) + 1;
+    const startRow = Math.floor(-offsetY / cellSize) - 1;
+    const endRow = Math.ceil((canvas.height - offsetY) / cellSize) + 1;
+
+    // vertical lines
+    for (let i = startCol; i <= endCol; i++) {
+      const x = i * cellSize + offsetX;
+      gridCtx.beginPath();
+      gridCtx.moveTo(x + 0.5, 0);
+      gridCtx.lineTo(x + 0.5, gridCanvas.height);
+      gridCtx.stroke();
+    }
+    // horizontal lines
+    for (let j = startRow; j <= endRow; j++) {
+      const y = j * cellSize + offsetY;
+      gridCtx.beginPath();
+      gridCtx.moveTo(0, y + 0.5);
+      gridCtx.lineTo(gridCanvas.width, y + 0.5);
+      gridCtx.stroke();
+    }
+    gridCacheValid = true;
+  }
+
+  // Full redraw (used on resize or major camera changes)
+  function redrawAll() {
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    renderGridCache();
+    // draw grid background if enabled
+    if (document.getElementById('gridToggle').checked) {
+      ctx.drawImage(gridCanvas, 0, 0);
+    }
+    visibleDrawn.clear();
+    // draw only visible live cells
+    ctx.fillStyle = '#0f0';
+    for (const k of liveSet) {
+      const {x,y} = decodeKey(k);
+      const {sx,sy} = worldToScreen(x,y);
+      if (sx + cellSize > 0 && sx < canvas.width && sy + cellSize > 0 && sy < canvas.height) {
+        drawCellScreen(sx, sy, cellSize);
+        visibleDrawn.add(k);
+      }
+    }
+  }
+
+  // Partial update: given newSet and oldSet, only change cells that differ
+  function applyDiffAndRender(newSet, oldSet) {
+    // newSet and oldSet are Sets of encoded keys
+    // compute births and deaths as arrays (only needed for display stats)
+    let births = 0, deaths = 0;
+    const toDraw = [];
+    const toClear = [];
+
+    // iterate newSet for births (or stayed alive)
+    for (const k of newSet) {
+      if (!oldSet.has(k)) {
+        births++;
+        // if visible, draw
+        const {x,y} = decodeKey(k);
+        const {sx,sy} = worldToScreen(x,y);
+        if (sx + cellSize > 0 && sx < canvas.width && sy + cellSize > 0 && sy < canvas.height) {
+          toDraw.push({k, sx, sy});
+        }
+      } else {
+        // stayed alive: keep in visibleDrawn as needed later
+      }
+    }
+
+    // iterate oldSet for deaths
+    for (const k of oldSet) {
+      if (!newSet.has(k)) {
+        deaths++;
+        const {x,y} = decodeKey(k);
+        const {sx,sy} = worldToScreen(x,y);
+        if (sx + cellSize > 0 && sx < canvas.width && sy + cellSize > 0 && sy < canvas.height) {
+          toClear.push({k, sx, sy});
+        }
+      }
+    }
+
+    // draw and clear
+    // Clear first (so overlapping draw is consistent)
+    for (const c of toClear) {
+      clearCellScreen(c.sx, c.sy, cellSize);
+      visibleDrawn.delete(c.k);
+    }
+    ctx.fillStyle = '#0f0';
+    for (const d of toDraw) {
+      drawCellScreen(d.sx, d.sy, cellSize);
+      visibleDrawn.add(d.k);
+    }
+
+    birthsThisGen = births;
+    deathsThisGen = deaths;
+    peakPopulation = Math.max(peakPopulation, newSet.size);
+  }
+
+  // ---- Simulation worker setup ----
+  // Worker code as a blob string (we keep it self-contained)
+  function createWorker() {
+    const workerSrc = `
+      // Worker: receives Float64Array of keys (buffer transferred)
+      const COORD_OFFSET = ${COORD_OFFSET};
+      const SHIFT = ${SHIFT};
+
+      function decodeKey(k) {
+        const x = Math.floor(k / SHIFT) - COORD_OFFSET;
+        const y = (k % SHIFT) - COORD_OFFSET;
+        return {x,y};
+      }
+      function encodeKey(x,y) {
+        return (x + COORD_OFFSET) * SHIFT + (y + COORD_OFFSET);
+      }
+
+      onmessage = function(e) {
+        // e.data expected to be an object:
+        // { keysBuf: ArrayBuffer (Float64Array), speed, steps }
+        const { keysBuf, steps } = e.data;
+        const arr = new Float64Array(keysBuf);
+        // build Set of live keys (Number)
+        const live = new Set();
+        for (let i = 0; i < arr.length; i++) live.add(arr[i]);
+
+        // run 'steps' generations
+        let lastResult = null;
+        for (let s = 0; s < steps; s++) {
+          // neighbor counts as Map<number, number>
+          const counts = new Map();
+          for (const k of live) {
+            const {x,y} = decodeKey(k);
+            // increment neighbors
+            for (let dx=-1; dx<=1; dx++) {
+              for (let dy=-1; dy<=1; dy++) {
+                if (dx === 0 && dy === 0) continue;
+                const nk = encodeKey(x+dx, y+dy);
+                counts.set(nk, (counts.get(nk) || 0) + 1);
+              }
+            }
+          }
+          // build next live set
+          const next = new Set();
+          for (const [k, c] of counts.entries()) {
+            if (c === 3 || (c === 2 && live.has(k))) {
+              next.add(k);
+            }
+          }
+          live.clear();
+          for (const k of next) live.add(k);
+        }
+
+        // convert live Set to Float64Array and transfer buffer back
+        const out = new Float64Array(live.size);
+        let idx = 0;
+        for (const k of live) out[idx++] = k;
+        postMessage({ resultBuf: out.buffer }, [out.buffer]);
+      };
+    `;
+    const blob = new Blob([workerSrc], { type: 'application/javascript' });
+    const url = URL.createObjectURL(blob);
+    return new Worker(url);
+  }
+
+  function ensureWorker() {
+    if (simWorker) return;
+    simWorker = createWorker();
+    simWorker.onmessage = function(e) {
+      awaitingSim = false;
+      const buf = e.data.resultBuf;
+      const arr = new Float64Array(buf);
+      // build Set from arr
+      const newSet = new Set();
+      for (let i=0;i<arr.length;i++) newSet.add(arr[i]);
+
+      // render diff between liveSet and newSet
+      const oldSet = liveSet;
+      liveSet = newSet;
+      generation++;
+      applyDiffAndRender(newSet, oldSet);
+      updateStats();
+
+      // schedule next simulate() call if still running
+      if (running) {
+        requestAnimationFrame(stepLoop);
+      }
+    };
+  }
+
+  // Kick off simulation step(s): we send current liveSet as Float64Array (transfer)
+  function simulateSteps(steps = 1) {
+    if (awaitingSim) return; // worker busy
+    ensureWorker();
+    // convert liveSet to Float64Array
+    const arr = new Float64Array(liveSet.size);
+    let i = 0;
+    for (const k of liveSet) arr[i++] = k;
+    awaitingSim = true;
+    simWorker.postMessage({ keysBuf: arr.buffer, steps }, [arr.buffer]);
+    // arr.buffer has been transferred; arr is now neutered
+  }
+
+  // main loop control: pace based on speed setting
+  let lastSimTime = 0;
+  function stepLoop(ts) {
+    if (!running) return;
+    const now = performance.now();
+    const interval = 1000 / speed;
+    if (!lastSimTime) lastSimTime = now;
+    const elapsed = now - lastSimTime;
+    if (elapsed >= interval) {
+      // allow multiple steps if interval large (but cap to avoid spiral)
+      const steps = Math.max(1, Math.floor(elapsed / interval));
+      lastSimTime = now;
+      simulateSteps(steps);
+    }
+    // if worker busy, we simply wait; worker will schedule next requestFrame when done
+    // otherwise, schedule next frame as usual
+    if (!awaitingSim) {
+      requestAnimationFrame(stepLoop);
+    }
+  }
+
+  // ---- Input handlers / interactions ----
+  function toggleCellAtScreen(px, py) {
+    const {x,y} = screenToWorld(px, py);
+    const k = encodeKey(x,y);
+    if (liveSet.has(k)) {
+      liveSet.delete(k);
+    } else {
+      liveSet.add(k);
+    }
+    if (generation === 0) initialCellCount = liveSet.size;
+    // immediate render of this change
+    applyDiffAndRender(liveSet, new Set(visibleDrawn)); // approximate: old visible used
+    updateStats();
+  }
+
+  canvas.addEventListener('click', (e) => {
+    if (isDragging) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    toggleCellAtScreen(x,y);
+  });
+
+  canvas.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    dragOffsetX = offsetX;
+    dragOffsetY = offsetY;
+    wrapper.classList.add('grabbing');
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    offsetX = dragOffsetX + (e.clientX - dragStartX);
+    offsetY = dragOffsetY + (e.clientY - dragStartY);
+    gridCacheValid = false;
+    redrawAll();
+  });
+  window.addEventListener('mouseup', (e) => {
+    isDragging = false;
+    wrapper.classList.remove('grabbing');
+  });
+
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    const worldBefore = screenToWorld(mouseX, mouseY);
+
+    const zoom = e.deltaY < 0 ? 1.12 : 0.88;
+    const newCellSize = Math.max(1, Math.min(60, Math.round(cellSize * zoom)));
+    if (newCellSize === cellSize) return;
+
+    // adjust offset so point under mouse stays anchored
+    offsetX = mouseX - worldBefore.x * newCellSize;
+    offsetY = mouseY - worldBefore.y * newCellSize;
+    cellSize = newCellSize;
+    gridCacheValid = false;
+    redrawAll();
+  }, { passive: false });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') {
+      e.preventDefault();
+      running ? stop() : start();
+    }
+  });
+
+  // ---- UI wiring ----
+  document.getElementById('startBtn').addEventListener('click', start);
+  document.getElementById('stopBtn').addEventListener('click', stop);
+  document.getElementById('clearBtn').addEventListener('click', clearAll);
+  document.getElementById('randomBtn').addEventListener('click', randomSeed);
+  document.getElementById('controls-toggler').addEventListener('click', () => {
+    const controls = document.getElementById('controls');
+    controls.classList.toggle('hidden');
+    const toggler = document.getElementById('controls-toggler');
+    toggler.textContent = controls.classList.contains('hidden') ? '+' : 'x';
+  });
+  document.getElementById('fullscreenBtn').addEventListener('click', () => {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+    else document.exitFullscreen();
+  });
+
+  document.getElementById('gridToggle').addEventListener('change', (e) => {
+    gridCacheValid = false;
+    redrawAll();
+  });
+
+  document.getElementById('speedInput').addEventListener('input', (e) => {
+    speed = Math.max(1, Math.min(120, parseInt(e.target.value) || 20));
+    e.target.value = speed;
+  });
+
+  // ---- Patterns (kept from your file) ----
+  const patterns = [
+    { name: "Glider", cells: [[1,0],[2,1],[0,2],[1,2],[2,2]] },
+    { name: "Gosper Glider Gun", cells: [
+      [5,1],[5,2],[6,1],[6,2],[5,11],[6,11],[7,11],[4,12],[8,12],[3,13],[9,13],
+      [3,14],[9,14],[6,15],[4,16],[8,16],[5,17],[6,17],[7,17],[6,18],[3,21],[4,21],
+      [5,21],[3,22],[4,22],[5,22],[2,23],[6,23],[1,25],[2,25],[6,25],[7,25],[3,35],[4,35],[3,36],[4,36]
+    ]},
+    { name: "Blinker", cells:[[0,0],[1,0],[2,0]] },
+    { name: "Random Cluster", cells: (function(){ const a=[]; for(let i=0;i<200;i++){a.push([Math.floor(Math.random()*40)-20, Math.floor(Math.random()*40)-20]);} return a; })() },
+    // keep adding more short patterns if you like...
+  ];
+  const patternsContainer = document.getElementById('patternsContainer');
+  patterns.forEach(p => {
+    const btn = document.createElement('button');
+    btn.textContent = p.name;
+    btn.addEventListener('click', () => {
+      const centerX = Math.floor((canvas.width/2 - offsetX) / cellSize);
+      const centerY = Math.floor((canvas.height/2 - offsetY) / cellSize);
+      placePattern(p.cells, centerX, centerY);
+    });
+    patternsContainer.appendChild(btn);
+  });
+
+  function placePattern(cells, originX=0, originY=0) {
+    for (const [dx,dy] of cells) {
+      const k = encodeKey(originX + dx, originY + dy);
+      liveSet.add(k);
+    }
+    if (generation === 0) initialCellCount = liveSet.size;
+    redrawAll();
+    updateStats();
+  }
+
+  // ---- control functions ----
+  function start() {
+    if (running) return;
+    running = true;
+    lastSimTime = 0;
+    ensureWorker();
+    requestAnimationFrame(stepLoop);
+  }
+  function stop() {
+    running = false;
+  }
+  function clearAll() {
+    liveSet.clear();
+    visibleDrawn.clear();
+    generation = 0;
+    initialCellCount = 0;
+    peakPopulation = 0;
+    birthsThisGen = 0;
+    deathsThisGen = 0;
+    updateStats();
+    redrawAll();
+  }
+  function randomSeed() {
+    clearAll();
+    // Fill a large random area based on viewport in world coords
+    const cols = Math.floor(canvas.width / cellSize);
+    const rows = Math.floor(canvas.height / cellSize);
+    const centerX = Math.floor(-offsetX / cellSize);
+    const centerY = Math.floor(-offsetY / cellSize);
+    // put many cells relative to center
+    const count = Math.floor((cols * rows) / 4); // denser
+    for (let i=0;i<count;i++) {
+      const x = centerX + Math.floor(Math.random() * cols) - Math.floor(cols/2);
+      const y = centerY + Math.floor(Math.random() * rows) - Math.floor(rows/2);
+      liveSet.add(encodeKey(x,y));
+    }
+    initialCellCount = liveSet.size;
+    redrawAll();
+    updateStats();
+  }
+
+  function updateStats() {
+    generationEl.textContent = generation;
+    initialCellsEl.textContent = initialCellCount;
+    liveCellsEl.textContent = liveSet.size;
+    peakPopEl.textContent = peakPopulation;
+    birthsEl.textContent = birthsThisGen;
+    deathsEl.textContent = deathsThisGen;
+  }
+
+  // ---- boot ----
+  window.addEventListener('resize', resize);
+  resize();
+  updateStats();
+
+  // draw initial grid once
+  gridCacheValid = false;
+  redrawAll();
+
+  // expose some quick debugging helpers for console
+  window._liveSet = liveSet;
+  window._encodeKey = encodeKey;
+  window._decodeKey = decodeKey;
+
+  // Garbage-collect worker on page unload
+  window.addEventListener('beforeunload', () => {
+    if (simWorker) simWorker.terminate();
+  });
+  </script>
+</body>
+</html>
