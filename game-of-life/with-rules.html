@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Game of Life</title>
   <style>
     * {
@@ -18,6 +18,8 @@
       font-family: 'Courier New', monospace;
       overflow: hidden;
       height: 100vh;
+      touch-action: manipulation; /* Allow only pan and zoom */
+      -webkit-overflow-scrolling: touch;
     }
 
     #container {
@@ -39,6 +41,11 @@
       display: block;
       width: 100%;
       height: 100%;
+      touch-action: none; /* Prevent default touch behaviors */
+      user-select: none; /* Prevent text selection */
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
     }
 
     #controls {
@@ -541,12 +548,15 @@
     let wavePhases = new Map(); // Track wave phases for cells
     let cellDirections = new Map(); // Track movement directions
 
-    // Panning
+    // Panning and Touch
     let isDragging = false;
     let dragStartX = 0;
     let dragStartY = 0;
     let dragOffsetX = 0;
     let dragOffsetY = 0;
+    let lastTouchDistance = 0;
+    let touchStartTime = 0;
+    let touchMoved = false;
 
     function resize() {
       canvas.width = wrapper.clientWidth;
@@ -1096,19 +1106,57 @@
       requestAnimationFrame(gameLoop);
     }
 
+    // Helper functions for touch/mouse events
+    function getEventPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      if (e.touches && e.touches.length > 0) {
+        return {
+          x: e.touches[0].clientX - rect.left,
+          y: e.touches[0].clientY - rect.top,
+          clientX: e.touches[0].clientX,
+          clientY: e.touches[0].clientY
+        };
+      }
+      return {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+        clientX: e.clientX,
+        clientY: e.clientY
+      };
+    }
+
+    function getTouchDistance(touches) {
+      if (touches.length < 2) return 0;
+      const dx = touches[0].clientX - touches[1].clientX;
+      const dy = touches[0].clientY - touches[1].clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    function getTouchCenter(touches) {
+      if (touches.length < 2) return null;
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: (touches[0].clientX + touches[1].clientX) / 2 - rect.left,
+        y: (touches[0].clientY + touches[1].clientY) / 2 - rect.top
+      };
+    }
+
     // Event listeners
     canvas.addEventListener('click', (e) => {
-      if (isDragging) return;
-      const rect = canvas.getBoundingClientRect();
-      const x = Math.floor((e.clientX - rect.left - offsetX) / cellSize);
-      const y = Math.floor((e.clientY - rect.top - offsetY) / cellSize);
+      if (isDragging || touchMoved) return;
+      const pos = getEventPos(e);
+      const x = Math.floor((pos.x - offsetX) / cellSize);
+      const y = Math.floor((pos.y - offsetY) / cellSize);
       toggleCell(x, y);
     });
 
+    // Mouse events
     canvas.addEventListener('mousedown', (e) => {
+      e.preventDefault();
       isDragging = true;
-      dragStartX = e.clientX;
-      dragStartY = e.clientY;
+      const pos = getEventPos(e);
+      dragStartX = pos.clientX;
+      dragStartY = pos.clientY;
       dragOffsetX = offsetX;
       dragOffsetY = offsetY;
       wrapper.classList.add('grabbing');
@@ -1116,8 +1164,9 @@
 
     canvas.addEventListener('mousemove', (e) => {
       if (isDragging) {
-        offsetX = dragOffsetX + (e.clientX - dragStartX);
-        offsetY = dragOffsetY + (e.clientY - dragStartY);
+        const pos = getEventPos(e);
+        offsetX = dragOffsetX + (pos.clientX - dragStartX);
+        offsetY = dragOffsetY + (pos.clientY - dragStartY);
         draw();
       }
     });
@@ -1132,21 +1181,111 @@
       wrapper.classList.remove('grabbing');
     });
 
+    // Touch events
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      touchStartTime = Date.now();
+      touchMoved = false;
+      
+      if (e.touches.length === 1) {
+        // Single touch - start panning
+        isDragging = true;
+        const pos = getEventPos(e);
+        dragStartX = pos.clientX;
+        dragStartY = pos.clientY;
+        dragOffsetX = offsetX;
+        dragOffsetY = offsetY;
+        wrapper.classList.add('grabbing');
+      } else if (e.touches.length === 2) {
+        // Two touches - prepare for zoom
+        isDragging = false;
+        lastTouchDistance = getTouchDistance(e.touches);
+        wrapper.classList.remove('grabbing');
+      }
+    });
+
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      touchMoved = true;
+      
+      if (e.touches.length === 1 && isDragging) {
+        // Single touch panning
+        const pos = getEventPos(e);
+        offsetX = dragOffsetX + (pos.clientX - dragStartX);
+        offsetY = dragOffsetY + (pos.clientY - dragStartY);
+        draw();
+      } else if (e.touches.length === 2) {
+        // Two touch zoom
+        const currentDistance = getTouchDistance(e.touches);
+        const center = getTouchCenter(e.touches);
+        
+        if (lastTouchDistance > 0 && center) {
+          const worldX = (center.x - offsetX) / cellSize;
+          const worldY = (center.y - offsetY) / cellSize;
+          
+          const scale = currentDistance / lastTouchDistance;
+          const newCellSize = Math.max(1, Math.min(100, cellSize * scale));
+          
+          if (newCellSize !== cellSize) {
+            offsetX = center.x - worldX * newCellSize;
+            offsetY = center.y - worldY * newCellSize;
+            cellSize = newCellSize;
+            draw();
+          }
+        }
+        
+        lastTouchDistance = currentDistance;
+      }
+    });
+
+    canvas.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      
+      // Handle tap (quick touch without movement)
+      if (!touchMoved && Date.now() - touchStartTime < 200 && e.changedTouches.length === 1) {
+        const rect = canvas.getBoundingClientRect();
+        const touch = e.changedTouches[0];
+        const x = Math.floor((touch.clientX - rect.left - offsetX) / cellSize);
+        const y = Math.floor((touch.clientY - rect.top - offsetY) / cellSize);
+        toggleCell(x, y);
+      }
+      
+      if (e.touches.length === 0) {
+        isDragging = false;
+        wrapper.classList.remove('grabbing');
+        lastTouchDistance = 0;
+      } else if (e.touches.length === 1) {
+        // Switch back to single touch panning
+        isDragging = true;
+        const pos = { clientX: e.touches[0].clientX, clientY: e.touches[0].clientY };
+        dragStartX = pos.clientX;
+        dragStartY = pos.clientY;
+        dragOffsetX = offsetX;
+        dragOffsetY = offsetY;
+        wrapper.classList.add('grabbing');
+      }
+    });
+
+    canvas.addEventListener('touchcancel', (e) => {
+      e.preventDefault();
+      isDragging = false;
+      wrapper.classList.remove('grabbing');
+      lastTouchDistance = 0;
+    });
+
+    // Mouse wheel zoom
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
-      const rect = canvas.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
-
-      const worldX = (mouseX - offsetX) / cellSize;
-      const worldY = (mouseY - offsetY) / cellSize;
+      const pos = getEventPos(e);
+      const worldX = (pos.x - offsetX) / cellSize;
+      const worldY = (pos.y - offsetY) / cellSize;
 
       const zoom = e.deltaY < 0 ? 1.1 : 0.9;
       const newCellSize = Math.max(1, Math.min(100, cellSize * zoom));
 
       if (newCellSize !== cellSize) {
-        offsetX = mouseX - worldX * newCellSize;
-        offsetY = mouseY - worldY * newCellSize;
+        offsetX = pos.x - worldX * newCellSize;
+        offsetY = pos.y - worldY * newCellSize;
         cellSize = newCellSize;
         draw();
       }
